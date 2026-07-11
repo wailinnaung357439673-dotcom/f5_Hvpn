@@ -5,9 +5,17 @@ class VpnStatus {
   final String? serverName;
   final String? errorMessage;
 
-  const VpnStatus({this.state = VpnState.disconnected, this.serverName, this.errorMessage});
+  const VpnStatus({
+    this.state = VpnState.disconnected,
+    this.serverName,
+    this.errorMessage,
+  });
 
-  VpnStatus copyWith({VpnState? state, String? serverName, String? errorMessage}) {
+  VpnStatus copyWith({
+    VpnState? state,
+    String? serverName,
+    String? errorMessage,
+  }) {
     return VpnStatus(
       state: state ?? this.state,
       serverName: serverName ?? this.serverName,

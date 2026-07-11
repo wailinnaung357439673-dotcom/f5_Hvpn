@@ -18,12 +18,11 @@ class VpnProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     _engine = OpenVPN(
+      onVpnStatusChanged: (status) {
+        // Handle status change
+      },
       onVpnStageChanged: (stage, raw) {
         _updateStatus(stage);
-      },
-      onError: (error) {
-        _status = _status.copyWith(state: VpnState.error, errorMessage: error.toString());
-        notifyListeners();
       },
     );
 
@@ -61,10 +60,10 @@ class VpnProvider extends ChangeNotifier {
       return;
     }
 
-    if (!await Permission.vpn.request().then((value) => value.isGranted)) {
-      _status = _status.copyWith(state: VpnState.error, errorMessage: 'VPN Permission required');
-      notifyListeners();
-      return;
+    // Permission check
+    var status = await Permission.notification.status;
+    if (!status.isGranted) {
+      await Permission.notification.request();
     }
 
     const config = '''
@@ -80,7 +79,21 @@ verb 3
 auth-user-pass
 ''';
 
-    await _engine?.connect(config, 'F5 VPN', username: 'vpn', password: 'vpn');
+    try {
+      await _engine?.connect(
+        config,
+        'F5 VPN',
+        username: 'vpn',
+        password: 'vpn',
+        bypassPackages: [],
+      );
+    } catch (e) {
+      _status = _status.copyWith(
+        state: VpnState.error,
+        errorMessage: e.toString(),
+      );
+      notifyListeners();
+    }
   }
 
   @override

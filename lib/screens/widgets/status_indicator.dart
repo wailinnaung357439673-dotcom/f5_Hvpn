@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 class StatusIndicator extends StatelessWidget {
   final bool isConnected;
 
-  const StatusIndicator({super.key, required this.isConnected});
+  const StatusIndicator({
+    super.key,
+    required this.isConnected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -14,7 +17,9 @@ class StatusIndicator extends StatelessWidget {
           height: 80,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isConnected ? Colors.green.withOpacity(0.2) : Colors.grey.withOpacity(0.2),
+            color: isConnected
+                ? Colors.green.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.2),
             border: Border.all(
               color: isConnected ? Colors.green : Colors.grey,
               width: 4,

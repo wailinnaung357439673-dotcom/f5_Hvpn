@@ -18,7 +18,9 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  StatusIndicator(isConnected: provider.isConnected),
+                  StatusIndicator(
+                    isConnected: provider.isConnected,
+                  ),
                   const SizedBox(height: 50),
                   ConnectionButton(
                     isConnected: provider.isConnected,

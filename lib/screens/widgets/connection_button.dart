@@ -36,7 +36,9 @@ class ConnectionButton extends StatelessWidget {
         ),
         child: Center(
           child: isLoading
-              ? const CircularProgressIndicator(color: Colors.white)
+              ? const CircularProgressIndicator(
+                  color: Colors.white,
+                )
               : Icon(
                   isConnected ? Icons.power_settings_new : Icons.power_off,
                   color: Colors.white,
