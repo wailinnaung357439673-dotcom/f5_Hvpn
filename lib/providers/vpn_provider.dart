@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:openvpn_flutter/openvpn_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../models/vpn_status.dart';
+import '../models/vpn_status.dart' as my;
 
 class VpnProvider extends ChangeNotifier {
   OpenVPN? _engine;
-  VpnStatus _status = const VpnStatus();
+  my.VpnStatus _status = const my.VpnStatus();
   bool _isLoading = true;
 
-  VpnStatus get status => _status;
-  bool get isConnected => _status.state == VpnState.connected;
+  my.VpnStatus get status => _status;
+  bool get isConnected => _status.state == my.VpnState.connected;
   bool get isLoading => _isLoading;
 
   VpnProvider() {
@@ -36,19 +36,19 @@ class VpnProvider extends ChangeNotifier {
   }
 
   void _updateStatus(VPNStage stage) {
-    VpnState newState;
+    my.VpnState newState;
     switch (stage) {
       case VPNStage.connected:
-        newState = VpnState.connected;
+        newState = my.VpnState.connected;
         break;
       case VPNStage.connecting:
-        newState = VpnState.connecting;
+        newState = my.VpnState.connecting;
         break;
       case VPNStage.disconnecting:
-        newState = VpnState.disconnecting;
+        newState = my.VpnState.disconnecting;
         break;
       default:
-        newState = VpnState.disconnected;
+        newState = my.VpnState.disconnected;
     }
     _status = _status.copyWith(state: newState);
     notifyListeners();
@@ -56,7 +56,7 @@ class VpnProvider extends ChangeNotifier {
 
   Future<void> toggleVPN() async {
     if (isConnected) {
-      await _engine?.disconnect();
+      _engine?.disconnect();  // await ဖြုတ်လိုက်တယ်
       return;
     }
 
@@ -89,7 +89,7 @@ auth-user-pass
       );
     } catch (e) {
       _status = _status.copyWith(
-        state: VpnState.error,
+        state: my.VpnState.error,
         errorMessage: e.toString(),
       );
       notifyListeners();
