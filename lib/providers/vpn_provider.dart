@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:openvpn_flutter/openvpn_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/vpn_status.dart' as my;
+import '../services/remote_config_service.dart';
 
 class VpnProvider extends ChangeNotifier {
   OpenVPN? _engine;
   my.VpnStatus _status = const my.VpnStatus();
   bool _isLoading = true;
+  String _currentConfig = '';
+  List<String> _serverList = [];
 
   my.VpnStatus get status => _status;
   bool get isConnected => _status.state == my.VpnState.connected;
@@ -17,25 +20,42 @@ class VpnProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    _engine = OpenVPN(
-      onVpnStatusChanged: (status) {
-        // Handle status change
-      },
-      onVpnStageChanged: (stage, raw) {
-        _updateStatus(stage);
-      },
-    );
+    try {
+      // Remote Config ကို Load လုပ်ပါ
+      await RemoteConfigService.init();
+      _serverList = await RemoteConfigService.getServerList();
+      _currentConfig = await RemoteConfigService.getVpnConfig();
 
-    await _engine?.initialize(
-      groupIdentifier: "group.com.f5vpn.app",
-      providerBundleIdentifier: "com.f5vpn.app.VPNExtension",
-      localizedDescription: "F5 VPN",
-    );
+      _engine = OpenVPN(
+        onVpnStageChanged: (stage, raw) {
+          _updateStatus(stage);
+        },
+        onError: (error) {
+          _status = _status.copyWith(
+            state: my.VpnState.error,
+            errorMessage: error.toString(),
+          );
+          notifyListeners();
+          // Error ဖြစ်ရင် နောက် Server ကိုပြောင်းပါ
+          _switchToNextServer();
+        },
+      );
+
+      await _engine?.initialize(
+        groupIdentifier: "group.com.f5vpn.app",
+        providerBundleIdentifier: "com.f5vpn.app.VPNExtension",
+        localizedDescription: "F5 VPN",
+      );
+    } catch (e) {
+      debugPrint('VPN Init Error: $e');
+    }
     _isLoading = false;
     notifyListeners();
   }
 
-  void _updateStatus(VPNStage stage) {
+  void _updateStatus(VPNStage? stage) {
+    if (stage == null) return;
+    
     my.VpnState newState;
     switch (stage) {
       case VPNStage.connected:
@@ -54,34 +74,38 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> toggleVPN() async {
-    if (isConnected) {
-      _engine?.disconnect();  // await ဖြုတ်လိုက်တယ်
+  Future<void> _switchToNextServer() async {
+    try {
+      _currentConfig = await RemoteConfigService.getNextConfig();
+      _status = _status.copyWith(
+        serverName: 'Server ${RemoteConfigService.getCurrentIndex() + 1}',
+      );
+      notifyListeners();
+      
+      // အလိုအလျောက် ပြန်ချိတ်ပါ
+      if (_status.state == my.VpnState.connected) {
+        await _engine?.disconnect();
+        await Future.delayed(const Duration(seconds: 2));
+        await _connectVPN();
+      }
+    } catch (e) {
+      debugPrint('Switch server error: $e');
+    }
+  }
+
+  Future<void> _connectVPN() async {
+    if (_currentConfig.isEmpty) {
+      _status = _status.copyWith(
+        state: my.VpnState.error,
+        errorMessage: 'No VPN config available',
+      );
+      notifyListeners();
       return;
     }
 
-    // Permission check
-    var status = await Permission.notification.status;
-    if (!status.isGranted) {
-      await Permission.notification.request();
-    }
-
-    const config = '''
-client
-dev tun
-proto udp
-remote sg-sin.vpngate.net 1194
-resolv-retry infinite
-nobind
-remote-cert-tls server
-cipher AES-256-GCM
-verb 3
-auth-user-pass
-''';
-
     try {
       await _engine?.connect(
-        config,
+        _currentConfig,
         'F5 VPN',
         username: 'vpn',
         password: 'vpn',
@@ -93,8 +117,53 @@ auth-user-pass
         errorMessage: e.toString(),
       );
       notifyListeners();
+      _switchToNextServer();
     }
   }
+
+  Future<void> toggleVPN() async {
+    if (isConnected) {
+      _engine?.disconnect();
+      return;
+    }
+
+    // Permission check
+    final status = await Permission.vpn.request();
+    if (!status.isGranted) {
+      _status = _status.copyWith(
+        state: my.VpnState.error,
+        errorMessage: 'VPN Permission required',
+      );
+      notifyListeners();
+      return;
+    }
+
+    await _connectVPN();
+  }
+
+  // Server ကို လက်နဲ့ပြောင်းချင်ရင်
+  Future<void> switchToServer(int index) async {
+    if (index < 0 || index >= _serverList.length) return;
+    
+    try {
+      final configKey = 'vpn_config_${index + 1}';
+      _currentConfig = await RemoteConfigService.getNextConfig();
+      _status = _status.copyWith(
+        serverName: 'Server ${index + 1}',
+      );
+      notifyListeners();
+
+      if (isConnected) {
+        await _engine?.disconnect();
+        await Future.delayed(const Duration(seconds: 2));
+        await _connectVPN();
+      }
+    } catch (e) {
+      debugPrint('Switch server error: $e');
+    }
+  }
+
+  List<String> getServerList() => _serverList;
 
   @override
   void dispose() {
