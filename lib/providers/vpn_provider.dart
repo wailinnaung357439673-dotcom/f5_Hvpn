@@ -10,10 +10,21 @@ class VpnProvider extends ChangeNotifier {
   bool _isLoading = true;
   String _currentConfig = '';
   List<String> _serverList = [];
+  List<String> _serverNames = [
+    '🇸🇬 Singapore',
+    '🇺🇸 USA',
+    '🇯🇵 Japan',
+    '🇩🇪 Germany',
+  ];
+  int _selectedServerIndex = 0;
+  bool _isConnecting = false;
 
   my.VpnStatus get status => _status;
   bool get isConnected => _status.state == my.VpnState.connected;
   bool get isLoading => _isLoading;
+  bool get isConnecting => _isConnecting;
+  int get selectedServerIndex => _selectedServerIndex;
+  List<String> get serverNames => _serverNames;
 
   VpnProvider() {
     _init();
@@ -21,36 +32,42 @@ class VpnProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     try {
-      // Remote Config ကို Load လုပ်ပါ
       await RemoteConfigService.init();
       _serverList = await RemoteConfigService.getServerList();
       _currentConfig = await RemoteConfigService.getVpnConfig();
 
-      _engine = OpenVPN(
-        onVpnStageChanged: (stage, raw) {
-          _updateStatus(stage);
-        },
-        onError: (error) {
-          _status = _status.copyWith(
-            state: my.VpnState.error,
-            errorMessage: error.toString(),
-          );
-          notifyListeners();
-          // Error ဖြစ်ရင် နောက် Server ကိုပြောင်းပါ
-          _switchToNextServer();
-        },
-      );
-
-      await _engine?.initialize(
-        groupIdentifier: "group.com.f5vpn.app",
-        providerBundleIdentifier: "com.f5vpn.app.VPNExtension",
-        localizedDescription: "F5 VPN",
-      );
+      _createEngine();
     } catch (e) {
       debugPrint('VPN Init Error: $e');
     }
     _isLoading = false;
     notifyListeners();
+  }
+
+  void _createEngine() {
+    _engine = OpenVPN(
+      onVpnStageChanged: (stage, raw) {
+        _updateStatus(stage);
+        if (stage == VPNStage.connected) {
+          _isConnecting = false;
+          notifyListeners();
+        }
+      },
+      onError: (error) {
+        _isConnecting = false;
+        _status = _status.copyWith(
+          state: my.VpnState.error,
+          errorMessage: error.toString(),
+        );
+        notifyListeners();
+      },
+    );
+
+    _engine?.initialize(
+      groupIdentifier: "group.com.f5vpn.app",
+      providerBundleIdentifier: "com.f5vpn.app.VPNExtension",
+      localizedDescription: "F5 VPN",
+    );
   }
 
   void _updateStatus(VPNStage? stage) {
@@ -60,70 +77,36 @@ class VpnProvider extends ChangeNotifier {
     switch (stage) {
       case VPNStage.connected:
         newState = my.VpnState.connected;
+        _isConnecting = false;
         break;
       case VPNStage.connecting:
         newState = my.VpnState.connecting;
+        _isConnecting = true;
         break;
       case VPNStage.disconnecting:
         newState = my.VpnState.disconnecting;
         break;
       default:
         newState = my.VpnState.disconnected;
+        _isConnecting = false;
     }
     _status = _status.copyWith(state: newState);
     notifyListeners();
   }
 
-  Future<void> _switchToNextServer() async {
-    try {
-      _currentConfig = await RemoteConfigService.getNextConfig();
-      _status = _status.copyWith(
-        serverName: 'Server ${RemoteConfigService.getCurrentIndex() + 1}',
-      );
+  Future<void> toggleVPN() async {
+    if (_isConnecting) return;
+
+    if (isConnected) {
+      // Disconnect
+      await _engine?.disconnect();
+      _status = _status.copyWith(state: my.VpnState.disconnected);
+      _isConnecting = false;
       notifyListeners();
       
-      // အလိုအလျောက် ပြန်ချိတ်ပါ
-      if (_status.state == my.VpnState.connected) {
-        await _engine?.disconnect();
-        await Future.delayed(const Duration(seconds: 2));
-        await _connectVPN();
-      }
-    } catch (e) {
-      debugPrint('Switch server error: $e');
-    }
-  }
-
-  Future<void> _connectVPN() async {
-    if (_currentConfig.isEmpty) {
-      _status = _status.copyWith(
-        state: my.VpnState.error,
-        errorMessage: 'No VPN config available',
-      );
-      notifyListeners();
-      return;
-    }
-
-    try {
-      await _engine?.connect(
-        _currentConfig,
-        'F5 VPN',
-        username: 'vpn',
-        password: 'vpn',
-        bypassPackages: [],
-      );
-    } catch (e) {
-      _status = _status.copyWith(
-        state: my.VpnState.error,
-        errorMessage: e.toString(),
-      );
-      notifyListeners();
-      _switchToNextServer();
-    }
-  }
-
-  Future<void> toggleVPN() async {
-    if (isConnected) {
-      _engine?.disconnect();
+      // Engine ကို ပြန်ဖန်တီးပါ (ပြန်ချိတ်နိုင်ဖို့)
+      await Future.delayed(const Duration(milliseconds: 500));
+      _createEngine();
       return;
     }
 
@@ -141,29 +124,63 @@ class VpnProvider extends ChangeNotifier {
     await _connectVPN();
   }
 
-  // Server ကို လက်နဲ့ပြောင်းချင်ရင်
-  Future<void> switchToServer(int index) async {
-    if (index < 0 || index >= _serverList.length) return;
+  Future<void> _connectVPN() async {
+    if (_currentConfig.isEmpty) {
+      _status = _status.copyWith(
+        state: my.VpnState.error,
+        errorMessage: 'No VPN config available',
+      );
+      notifyListeners();
+      return;
+    }
+
+    _isConnecting = true;
+    notifyListeners();
+
+    try {
+      await _engine?.connect(
+        _currentConfig,
+        _serverNames[_selectedServerIndex],
+        username: 'vpn',
+        password: 'vpn',
+        bypassPackages: [],
+      );
+    } catch (e) {
+      _isConnecting = false;
+      _status = _status.copyWith(
+        state: my.VpnState.error,
+        errorMessage: e.toString(),
+      );
+      notifyListeners();
+    }
+  }
+
+  // Server ပြောင်းမယ်
+  Future<void> selectServer(int index) async {
+    if (index < 0 || index >= _serverNames.length) return;
     
+    _selectedServerIndex = index;
+    _status = _status.copyWith(
+      serverName: _serverNames[index],
+    );
+    notifyListeners();
+
+    // Config ကိုပြောင်းပါ
     try {
       final configKey = 'vpn_config_${index + 1}';
       _currentConfig = await RemoteConfigService.getNextConfig();
-      _status = _status.copyWith(
-        serverName: 'Server ${index + 1}',
-      );
-      notifyListeners();
-
+      
+      // ချိတ်ထားရင် ဖြုတ်ပြီး ပြန်ချိတ်ပါ
       if (isConnected) {
         await _engine?.disconnect();
-        await Future.delayed(const Duration(seconds: 2));
+        await Future.delayed(const Duration(milliseconds: 500));
+        _createEngine();
         await _connectVPN();
       }
     } catch (e) {
       debugPrint('Switch server error: $e');
     }
   }
-
-  List<String> getServerList() => _serverList;
 
   @override
   void dispose() {
