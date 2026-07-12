@@ -17,11 +17,9 @@ class F5VpnHomeScreen extends StatefulWidget {
 
 class _F5VpnHomeScreenState extends State<F5VpnHomeScreen> {
   late OpenVPN engine;
-  VpnStage? vpnStage;
+  String vpnStage = "disconnected"; // VpnStage အစား String ပြောင်းသုံးထားပါတယ်
   bool isConnected = false;
 
-  // စမ်းသပ်ဖို့အတွက် OpenVPN Config (ဒီနေရာမှာ ကိုယ့် .ovpn ဖိုင်ထဲက စာသားတွေကို ထည့်ရမှာပါ)
-  // လောလောဆယ် ဒါက ပုံစံပြရုံသက်သက်မို့လို့ တကယ့် Server အစစ်ထည့်မှ ချိတ်မှာပါဗျာ
   String vpnConfigString = """
 client
 dev tun
@@ -34,7 +32,6 @@ persist-tun
 verb 3
 <ca>
 -----BEGIN CERTIFICATE-----
-(ကိုယ့်ဆာဗာရဲ့ CA Certificate စာသားများ)
 -----END CERTIFICATE-----
 </ca>
 """;
@@ -42,55 +39,51 @@ verb 3
   @override
   void initState() {
     super.initState();
-    // 1. OpenVPN Engine ကို အလုပ်စလုပ်ခိုင်းမယ်
+    
     engine = OpenVPN(
       onVpnStageChanged: (stage, duration) {
         setState(() {
-          vpnStage = stage;
-          isConnected = stage == VpnStage.connected;
+          // stage ရဲ့ နာမည်ကို String အဖြစ် ပြောင်းမှတ်ပါမယ်
+          vpnStage = stage.toString().toLowerCase();
+          isConnected = vpnStage.contains("connected") && !vpnStage.contains("connecting");
         });
       },
       onVpnStatusChanged: (status) {
-        // ဒီမှာ Speed (Byte In/Out) တွေကို လှမ်းဖတ်လို့ရပါတယ်
+        // Speed tracker
       },
     );
 
-    // 2. Engine ကို Initialize လုပ်မယ်
     engine.initialize(
-      groupIdentifier: "group.com.f5.vpn", // iOS အတွက် (မလိုရင် ဒီတိုင်းထားပါ)
-      providerBundleIdentifier: "com.f5.vpn.VPNExtension", // iOS အတွက်
+      groupIdentifier: "group.com.f5.vpn",
+      providerBundleIdentifier: "com.f5.vpn.VPNExtension",
       localizedDescription: "F5 VPN Connection",
     );
   }
 
-  // VPN ကို ချိတ်ဆက်/ဖြတ်တောက်မယ့် Function
   void toggleVpn() async {
     if (isConnected) {
       engine.disconnect();
     } else {
-      // VPN ချိတ်ဖို့ အမိန့်ပေးတာ
       engine.connect(
         vpnConfigString, 
-        "F5 Server", // ဆာဗာနာမည်
-        username: "", // ဆာဗာမှာ Username လိုရင် ထည့်ရန်
-        password: "", // ဆာဗာမှာ Password လိုရင် ထည့်ရန်
+        "F5 Server", 
+        username: "", 
+        password: "", 
         certIsRequired: false,
       );
     }
   }
 
-  // VPN ရဲ့ လက်ရှိအခြေအနေအလိုက် ပြသမယ့် စာသား
+  // အခြေအနေပြ စာသားကို လိုက်ပြင်ပေးမယ့် Function
   String getStatusText() {
-    if (vpnStage == null) return "DISCONNECTED";
-    switch (vpnStage!) {
-      case VpnStage.connected:
-        return "CONNECTED";
-      case VpnStage.connecting:
-        return "CONNECTING...";
-      case VpnStage.disconnecting:
-        return "DISCONNECTING...";
-      default:
-        return "DISCONNECTED";
+    if (vpnStage.contains("connecting")) {
+      return "CONNECTING...";
+    } else if (vpnStage.contains("connected")) {
+      return "CONNECTED";
+    } else if (vpnStage.contains("disconnecting")) {
+      return "DISCONNECTING...";
+    } else {
+      return "DISCONNECTED";
     }
   }
 
@@ -108,7 +101,6 @@ verb 3
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // VPN ရဲ့ Status စာသား
             Text(
               getStatusText(),
               style: TextStyle(
@@ -120,7 +112,6 @@ verb 3
             ),
             const SizedBox(height: 50),
 
-            // ပါဝါခလုတ်ကြီး
             GestureDetector(
               onTap: toggleVpn,
               child: AnimatedContainer(
@@ -150,7 +141,6 @@ verb 3
             ),
             const SizedBox(height: 50),
             
-            // ဆာဗာရွေးဖို့ နေရာ (Dummy အနေနဲ့ ပြထားတာပါ)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
