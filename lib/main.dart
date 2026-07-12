@@ -176,10 +176,10 @@ M7muBbF0XN7VO80iJPv+PmIZdEIAkpwKfi201YB+BafCIuGxIF50Vg==
     try {
       if (isConnected) {
         // ချိတ်ထားရင် ဖြုတ်ခိုင်းမယ်
-        await engine.disconnect();
+         engine.disconnect();
       } else {
         // မချိတ်ရသေးရင် တကယ့် Android ရဲ့ VpnService ကို လှမ်းနှိုးပြီး တောင်းခိုင်းမယ်
-        await engine.connect(
+         engine.connect(
           vpnConfigString, 
           "F5 Japan Server", 
           username: "vpn", 
