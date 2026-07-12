@@ -17,9 +17,10 @@ class F5VpnHomeScreen extends StatefulWidget {
 
 class _F5VpnHomeScreenState extends State<F5VpnHomeScreen> {
   late OpenVPN engine;
-  String vpnStage = "disconnected"; // VpnStage အစား String ပြောင်းသုံးထားပါတယ်
+  String vpnStage = "disconnected"; 
   bool isConnected = false;
 
+  // ⚠️ ဒီနေရာမှာ ကိုယ့်ရဲ့ တကယ့် ဂျပန် .ovpn ဖိုင်ထဲက စာသားတွေကို အစားထိုးထည့်ပေးပါ
   String vpnConfigString = """
 client
 dev tun
@@ -43,13 +44,21 @@ verb 3
     engine = OpenVPN(
       onVpnStageChanged: (stage, duration) {
         setState(() {
-          // stage ရဲ့ နာမည်ကို String အဖြစ် ပြောင်းမှတ်ပါမယ်
-          vpnStage = stage.toString().toLowerCase();
-          isConnected = vpnStage.contains("connected") && !vpnStage.contains("connecting");
+          // Stage တန်ဖိုးကို စာလုံးအသေး ပြောင်းပစ်မယ်
+          String currentStage = stage.toString().toLowerCase();
+          vpnStage = currentStage;
+          
+          // လုံးဝတိကျတဲ့ Logic ဖြင့် မှန်ကန်စွာ စစ်ဆေးခြင်း
+          if (currentStage.contains("vpn_stage_connected") || currentStage == "connected") {
+            isConnected = true;
+          } else {
+            // disconnected ဖြစ်နေရင်သော်လည်းကောင်း၊ ချိတ်ဆဲ connecting ဖြစ်နေရင်သော်လည်းကောင်း dynamic ဖြစ်စေရမယ်
+            isConnected = false;
+          }
         });
       },
       onVpnStatusChanged: (status) {
-        // Speed tracker
+        // Speed Tracker
       },
     );
 
@@ -66,7 +75,7 @@ verb 3
     } else {
       engine.connect(
         vpnConfigString, 
-        "F5 Server", 
+        "F5 Japan Server", 
         username: "", 
         password: "", 
         certIsRequired: false,
@@ -74,11 +83,10 @@ verb 3
     }
   }
 
-  // အခြေအနေပြ စာသားကို လိုက်ပြင်ပေးမယ့် Function
   String getStatusText() {
     if (vpnStage.contains("connecting")) {
       return "CONNECTING...";
-    } else if (vpnStage.contains("connected")) {
+    } else if (vpnStage.contains("vpn_stage_connected") || vpnStage == "connected") {
       return "CONNECTED";
     } else if (vpnStage.contains("disconnecting")) {
       return "DISCONNECTING...";
@@ -101,6 +109,7 @@ verb 3
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // အခြေအနေပြ စာသား
             Text(
               getStatusText(),
               style: TextStyle(
@@ -112,6 +121,7 @@ verb 3
             ),
             const SizedBox(height: 50),
 
+            // ပါဝါခလုတ်ကြီး
             GestureDetector(
               onTap: toggleVpn,
               child: AnimatedContainer(
@@ -141,6 +151,7 @@ verb 3
             ),
             const SizedBox(height: 50),
             
+            // ဂျပန်နိုင်ငံဆာဗာအတွက် ပြင်ဆင်ပြီးသား UI
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
@@ -150,9 +161,9 @@ verb 3
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("🇸🇬", style: TextStyle(fontSize: 20)),
+                  Text("🇯🇵", style: TextStyle(fontSize: 20)),
                   SizedBox(width: 12),
-                  Text("Singapore Server (Free)", style: TextStyle(color: Colors.white70)),
+                  Text("Japan Server (Free)", style: TextStyle(color: Colors.white70)),
                 ],
               ),
             )
