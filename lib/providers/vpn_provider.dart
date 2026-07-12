@@ -9,7 +9,6 @@ class VpnProvider extends ChangeNotifier {
   my.VpnStatus _status = const my.VpnStatus();
   bool _isLoading = true;
   String _currentConfig = '';
-  List<String> _serverList = [];
   List<String> _serverNames = [
     '🇸🇬 Singapore',
     '🇺🇸 USA',
@@ -33,9 +32,7 @@ class VpnProvider extends ChangeNotifier {
   Future<void> _init() async {
     try {
       await RemoteConfigService.init();
-      _serverList = await RemoteConfigService.getServerList();
       _currentConfig = await RemoteConfigService.getVpnConfig();
-
       _createEngine();
     } catch (e) {
       debugPrint('VPN Init Error: $e');
@@ -45,10 +42,15 @@ class VpnProvider extends ChangeNotifier {
   }
 
   void _createEngine() {
+    _engine?.disconnect();
     _engine = OpenVPN(
       onVpnStageChanged: (stage, raw) {
         _updateStatus(stage);
         if (stage == VPNStage.connected) {
+          _isConnecting = false;
+          notifyListeners();
+        }
+        if (stage == VPNStage.disconnected) {
           _isConnecting = false;
           notifyListeners();
         }
@@ -98,19 +100,18 @@ class VpnProvider extends ChangeNotifier {
     if (_isConnecting) return;
 
     if (isConnected) {
-      // Disconnect
       await _engine?.disconnect();
       _status = _status.copyWith(state: my.VpnState.disconnected);
       _isConnecting = false;
       notifyListeners();
       
-      // Engine ကို ပြန်ဖန်တီးပါ (ပြန်ချိတ်နိုင်ဖို့)
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 300));
       _createEngine();
+      _status = _status.copyWith(state: my.VpnState.disconnected);
+      notifyListeners();
       return;
     }
 
-    // Permission check
     final status = await Permission.vpn.request();
     if (!status.isGranted) {
       _status = _status.copyWith(
@@ -141,8 +142,8 @@ class VpnProvider extends ChangeNotifier {
       await _engine?.connect(
         _currentConfig,
         _serverNames[_selectedServerIndex],
-        username: 'vpn',
-        password: 'vpn',
+        username: 'vpnbook',
+        password: 'ex9psfv', 
         bypassPackages: [],
       );
     } catch (e) {
@@ -155,7 +156,6 @@ class VpnProvider extends ChangeNotifier {
     }
   }
 
-  // Server ပြောင်းမယ်
   Future<void> selectServer(int index) async {
     if (index < 0 || index >= _serverNames.length) return;
     
@@ -165,15 +165,13 @@ class VpnProvider extends ChangeNotifier {
     );
     notifyListeners();
 
-    // Config ကိုပြောင်းပါ
     try {
       final configKey = 'vpn_config_${index + 1}';
       _currentConfig = await RemoteConfigService.getNextConfig();
       
-      // ချိတ်ထားရင် ဖြုတ်ပြီး ပြန်ချိတ်ပါ
       if (isConnected) {
         await _engine?.disconnect();
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 300));
         _createEngine();
         await _connectVPN();
       }
