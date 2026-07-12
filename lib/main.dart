@@ -17,13 +17,12 @@ class F5VpnHomeScreen extends StatefulWidget {
 
 class _F5VpnHomeScreenState extends State<F5VpnHomeScreen> {
   late OpenVPN engine;
-  String vpnStage = "disconnected"; 
+  String vpnStage = "disconnected"; // လက်ရှိ VPN ရဲ့ အခြေအနေအစစ်အမှန်
   bool isConnected = false;
-  bool isInitializing = true; 
 
-  // ⚠️ ဒီနေရာမှာ အစ်ကို့ရဲ့ Laptop ထဲက ဂျပန် .ovpn ဖိုင်စာသားအားလုံးကို အစအဆုံး (Ctrl+A / Ctrl+C) လုပ်ပြီး အစားထိုးထည့်ပေးပါဗျာ။
+  // ပြင်ဆင်ပြီးသား ဂျပန် ဆာဗာစာသား (ဒီအတိုင်း ထားလိုက်ပါဦး)
   String vpnConfigString = """
-# OpenVPN 2.0 Sample Configuration File
+client
 dev tun
 proto udp
 remote 219.100.37.10 1195
@@ -118,83 +117,68 @@ M7muBbF0XN7VO80iJPv+PmIZdEIAkpwKfi201YB+BafCIuGxIF50Vg==
 -----END RSA PRIVATE KEY-----
 
 </key>
-
 """; 
 
   @override
   void initState() {
     super.initState();
-    initVpnEngine();
+    initOpenVpnEngine();
   }
 
-  Future<void> initVpnEngine() async {
-    try {
-      engine = OpenVPN(
-        onVpnStageChanged: (stage, duration) {
-          if (mounted) {
-            setState(() {
-              // စာသားကို သေချာ အသေးပြောင်းပြီး သတ်မှတ်မယ်
-              String currentStage = stage.toString().toLowerCase();
-              vpnStage = currentStage;
-              
-              // 💡 အဓိကပြင်ဆင်ချက်- contains မသုံးတော့ဘဲ တိကျတဲ့ စာသား ဖြစ်မှသာ စစ်ဆေးတော့မည်
-              // openvpn_flutter ရဲ့ enum value က 'vpnstage.connected' သို့မဟုတ် 'connected' ထွက်တတ်ပါတယ်
-              if (currentStage == "vpnstage.connected" || 
-                  currentStage == "connected" || 
-                  currentStage.endsWith(".connected")) {
-                isConnected = true;
-              } else if (currentStage == "vpnstage.disconnected" || 
-                         currentStage == "disconnected" || 
-                         currentStage.endsWith(".disconnected")) {
-                isConnected = false;
-              }
-              // connecting သို့မဟုတ် disconnecting ဖြစ်နေရင် အစိမ်းရောင် မပြစေရဘူး
-            });
+  // အဆင့် (၁) - ဖုန်းရဲ့ Native OS စနစ်နဲ့ App ကြား ချိတ်ဆက်မှု အင်ဂျင်ကို အရင်နှိုးခြင်း
+  void initOpenVpnEngine() {
+    engine = OpenVPN(
+      onVpnStageChanged: (stage, duration) {
+        if (!mounted) return;
+        setState(() {
+          // ဖုန်းရဲ့ Native ဘက်က ပို့ပေးတဲ့ အခြေအနေကို ပုံသေဖတ်မယ်
+          String stageRaw = stage.toString().toLowerCase();
+          
+          if (stageRaw.contains("connected") && !stageRaw.contains("disconnected")) {
+            vpnStage = "CONNECTED";
+            isConnected = true;
+          } else if (stageRaw.contains("connecting")) {
+            vpnStage = "CONNECTING...";
+            isConnected = false;
+          } else if (stageRaw.contains("disconnecting")) {
+            vpnStage = "DISCONNECTING...";
+            isConnected = false;
+          } else {
+            vpnStage = "DISCONNECTED";
+            isConnected = false;
           }
-        },
-        onVpnStatusChanged: (status) {
-          // Speed tracker
-        },
-      );
+        });
+      },
+      onVpnStatusChanged: (status) {
+        // Speed Tracker (လောလောဆယ် မလိုသေးပါ)
+      },
+    );
 
-      await engine.initialize(
-        groupIdentifier: "group.com.f5.vpn",
-        providerBundleIdentifier: "com.f5.vpn.VPNExtension",
-        localizedDescription: "F5 VPN Connection",
-      );
-      
-      if (mounted) {
-        setState(() {
-          isInitializing = false; 
-        });
-      }
-    } catch (e) {
-      debugPrint("VPN Engine Error: $e");
-      if (mounted) {
-        setState(() {
-          isInitializing = false; 
-        });
-      }
-    }
+    // အင်ဂျင်ကို အမှန်တကယ် စတင်အသက်သွင်းခြင်း
+    engine.initialize(
+      groupIdentifier: "group.com.f5.vpn", 
+      providerBundleIdentifier: "com.f5.vpn.VPNExtension",
+      localizedDescription: "F5 VPN Connection",
+    );
   }
 
+  // အဆင့် (၂) - ခလုတ်နှိပ်ရင် ဖုန်းရဲ့ စနစ်ဆီ တိုက်ရိုက် Permission လှမ်းတောင်းခိုင်းခြင်း
   void toggleVpn() async {
-    if (isInitializing) return;
-
-    // ခလုတ်နှိပ်လိုက်တာနဲ့ UI မှာ ချက်ချင်း အလုပ်လုပ်ကြောင်း အချက်ပြစာသားပြောင်းပေးခြင်း
+    // ခလုတ်နှိပ်လိုက်တာနဲ့ ချက်ချင်း တုံ့ပြန်မှုပြအောင် UI ကို အရင်ပြောင်းခိုင်းမယ်
     setState(() {
       if (!isConnected) {
-        vpnStage = "connecting";
+        vpnStage = "CONNECTING...";
       } else {
-        vpnStage = "disconnecting";
+        vpnStage = "DISCONNECTING...";
       }
     });
 
     try {
       if (isConnected) {
+        // ချိတ်ထားရင် ဖြုတ်ခိုင်းမယ်
         await engine.disconnect();
       } else {
-        // Android ဖုန်းပေါ်မှာ တကယ်ချိတ်ခိုင်းပြီမို့ Permission Box တက်လာပါလိမ့်မယ်
+        // မချိတ်ရသေးရင် တကယ့် Android ရဲ့ VpnService ကို လှမ်းနှိုးပြီး တောင်းခိုင်းမယ်
         await engine.connect(
           vpnConfigString, 
           "F5 Japan Server", 
@@ -204,30 +188,13 @@ M7muBbF0XN7VO80iJPv+PmIZdEIAkpwKfi201YB+BafCIuGxIF50Vg==
         );
       }
     } catch (e) {
-      debugPrint("VPN Connection Error: $e");
+      // တစ်ခုခုမှားရင် Disconnected ပြန်လုပ်မယ်
       if (mounted) {
         setState(() {
-          vpnStage = "disconnected";
+          vpnStage = "DISCONNECTED";
           isConnected = false;
         });
       }
-    }
-  }
-
-  String getStatusText() {
-    if (isInitializing) {
-      return "INITIALIZING ENGINE...";
-    }
-    
-    String stage = vpnStage.toLowerCase();
-    if (stage.contains("connecting")) {
-      return "CONNECTING...";
-    } else if (stage.contains("disconnecting")) {
-      return "DISCONNECTING...";
-    } else if (isConnected) {
-      return "CONNECTED";
-    } else {
-      return "DISCONNECTED";
     }
   }
 
@@ -245,21 +212,21 @@ M7muBbF0XN7VO80iJPv+PmIZdEIAkpwKfi201YB+BafCIuGxIF50Vg==
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // အခြေအနေပြ စာသား (CONNECTED / DISCONNECTED / CONNECTING...)
             Text(
-              getStatusText(),
+              vpnStage,
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: isInitializing 
-                    ? Colors.orange 
-                    : (isConnected ? Colors.green : Colors.redAccent),
+                color: isConnected ? Colors.green : (vpnStage.contains("CONNECTING") ? Colors.orange : Colors.redAccent),
                 letterSpacing: 1.5,
               ),
             ),
             const SizedBox(height: 50),
 
+            // တကယ့် ပါဝါခလုတ်ကြီး
             InkWell(
-              onTap: toggleVpn, 
+              onTap: toggleVpn, // ခလုတ်နှိပ်ရင် ဖုန်းစနစ်ကို သွားနှိုးမယ်
               borderRadius: BorderRadius.circular(100),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -282,14 +249,13 @@ M7muBbF0XN7VO80iJPv+PmIZdEIAkpwKfi201YB+BafCIuGxIF50Vg==
                 child: Icon(
                   Icons.power_settings_new,
                   size: 70,
-                  color: isInitializing 
-                      ? Colors.grey 
-                      : (isConnected ? Colors.green : Colors.red),
+                  color: isConnected ? Colors.green : Colors.red,
                 ),
               ),
             ),
             const SizedBox(height: 50),
             
+            // အောက်ခြေ ဆာဗာအလံ UI
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
