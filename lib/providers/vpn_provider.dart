@@ -1,188 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:openvpn_flutter/openvpn_flutter.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../models/vpn_status.dart' as my;
-import '../services/remote_config_service.dart';
 
 class VpnProvider extends ChangeNotifier {
-  OpenVPN? _engine;
-  my.VpnStatus _status = const my.VpnStatus();
-  bool _isLoading = true;
-  String _currentConfig = '';
-  List<String> _serverNames = [
-    '🇸🇬 Singapore',
-    '🇺🇸 USA',
-    '🇯🇵 Japan',
-    '🇩🇪 Germany',
-  ];
-  int _selectedServerIndex = 0;
+  late OpenVPN _engine;
+  bool _isConnected = false;
   bool _isConnecting = false;
 
-  my.VpnStatus get status => _status;
-  bool get isConnected => _status.state == my.VpnState.connected;
-  bool get isLoading => _isLoading;
+  bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
-  int get selectedServerIndex => _selectedServerIndex;
-  List<String> get serverNames => _serverNames;
 
   VpnProvider() {
     _init();
   }
 
-  Future<void> _init() async {
-    try {
-      await RemoteConfigService.init();
-      _currentConfig = await RemoteConfigService.getVpnConfig();
-      _createEngine();
-    } catch (e) {
-      debugPrint('VPN Init Error: $e');
-    }
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  void _createEngine() {
-    _engine?.disconnect();
+  void _init() {
     _engine = OpenVPN(
-      onVpnStageChanged: (stage, raw) {
-        _updateStatus(stage);
-        if (stage == VPNStage.connected) {
+      onVpnStatusChanged: (data) {
+        if (data?.status == "CONNECTED") {
+          _isConnected = true;
           _isConnecting = false;
-          notifyListeners();
-        }
-        if (stage == VPNStage.disconnected) {
+        } else if (data?.status == "CONNECTING") {
+          _isConnecting = true;
+        } else {
+          _isConnected = false;
           _isConnecting = false;
-          notifyListeners();
         }
-      },
-      onError: (error) {
-        _isConnecting = false;
-        _status = _status.copyWith(
-          state: my.VpnState.error,
-          errorMessage: error.toString(),
-        );
         notifyListeners();
       },
+      onVpnStageChanged: (stage, raw) {},
     );
-
-    _engine?.initialize(
-      groupIdentifier: "group.com.f5vpn.app",
-      providerBundleIdentifier: "com.f5vpn.app.VPNExtension",
+    _engine.initialize(
+      groupIdentifier: "group.f5vpn",
+      providerBundleIdentifier: "com.f5vpn.openvpn",
       localizedDescription: "F5 VPN",
     );
-  }
-
-  void _updateStatus(VPNStage? stage) {
-    if (stage == null) return;
-    
-    my.VpnState newState;
-    switch (stage) {
-      case VPNStage.connected:
-        newState = my.VpnState.connected;
-        _isConnecting = false;
-        break;
-      case VPNStage.connecting:
-        newState = my.VpnState.connecting;
-        _isConnecting = true;
-        break;
-      case VPNStage.disconnecting:
-        newState = my.VpnState.disconnecting;
-        break;
-      default:
-        newState = my.VpnState.disconnected;
-        _isConnecting = false;
-    }
-    _status = _status.copyWith(state: newState);
-    notifyListeners();
   }
 
   Future<void> toggleVPN() async {
     if (_isConnecting) return;
 
-    if (isConnected) {
-      await _engine?.disconnect();
-      _status = _status.copyWith(state: my.VpnState.disconnected);
-      _isConnecting = false;
+    if (_isConnected) {
+      _engine.disconnect();
+    } else {
+      _isConnecting = true;
       notifyListeners();
       
-      await Future.delayed(const Duration(milliseconds: 300));
-      _createEngine();
-      _status = _status.copyWith(state: my.VpnState.disconnected);
-      notifyListeners();
-      return;
-    }
+      const config = """client
+dev tun
+proto tcp
+remote 128.199.65.12 443
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-GCM
+auth SHA256
+verb 3
+<ca>
+-----BEGIN CERTIFICATE-----
+MIIB9TCCAV+gAwIBAgIJAK9aG8X3ZndNMA0GCSqGSIb3DQEBCwUAMIGFMQswCQYD
+VQQGEwJTRzESMBAGA1UECAwJU2luZ2Fwb3JlMRIwEAYDVQQHDAlTaW5nYXBvcmUx
+-----END CERTIFICATE-----
+</ca>""";
 
-    final status = await Permission.vpn.request();
-    if (!status.isGranted) {
-      _status = _status.copyWith(
-        state: my.VpnState.error,
-        errorMessage: 'VPN Permission required',
+      _engine.connect(
+        config,
+        "Singapore Anti-Block",
+        username: "vpn",
+        password: "vpn",
       );
-      notifyListeners();
-      return;
     }
-
-    await _connectVPN();
-  }
-
-  Future<void> _connectVPN() async {
-    if (_currentConfig.isEmpty) {
-      _status = _status.copyWith(
-        state: my.VpnState.error,
-        errorMessage: 'No VPN config available',
-      );
-      notifyListeners();
-      return;
-    }
-
-    _isConnecting = true;
-    notifyListeners();
-
-    try {
-      await _engine?.connect(
-        _currentConfig,
-        _serverNames[_selectedServerIndex],
-        username: 'vpnbook',
-        password: 'ex9psfv', 
-        bypassPackages: [],
-      );
-    } catch (e) {
-      _isConnecting = false;
-      _status = _status.copyWith(
-        state: my.VpnState.error,
-        errorMessage: e.toString(),
-      );
-      notifyListeners();
-    }
-  }
-
-  Future<void> selectServer(int index) async {
-    if (index < 0 || index >= _serverNames.length) return;
-    
-    _selectedServerIndex = index;
-    _status = _status.copyWith(
-      serverName: _serverNames[index],
-    );
-    notifyListeners();
-
-    try {
-      final configKey = 'vpn_config_${index + 1}';
-      _currentConfig = await RemoteConfigService.getNextConfig();
-      
-      if (isConnected) {
-        await _engine?.disconnect();
-        await Future.delayed(const Duration(milliseconds: 300));
-        _createEngine();
-        await _connectVPN();
-      }
-    } catch (e) {
-      debugPrint('Switch server error: $e');
-    }
-  }
-
-  @override
-  void dispose() {
-    _engine?.disconnect();
-    super.dispose();
   }
 }
