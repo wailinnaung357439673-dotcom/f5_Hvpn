@@ -15,20 +15,22 @@ class VpnProvider extends ChangeNotifier {
 
   void _init() {
     _engine = OpenVPN(
-      onVpnStatusChanged: (data) {
-        if (data?.status == "CONNECTED") {
+      // Version 1.3.4 ၏ openvpn_flutter စံနှုန်းအတိုင်း တိုက်ရိုက် Stage ကို စစ်ဆေးပါသည်
+      onVpnStatusChanged: (data) {},
+      onVpnStageChanged: (stage, raw) {
+        if (stage == VPNStage.connected) {
           _isConnected = true;
           _isConnecting = false;
-        } else if (data?.status == "CONNECTING") {
+        } else if (stage == VPNStage.connecting || stage == VPNStage.authenticating) {
           _isConnecting = true;
-        } else {
+        } else if (stage == VPNStage.disconnected || stage == VPNStage.error) {
           _isConnected = false;
           _isConnecting = false;
         }
         notifyListeners();
       },
-      onVpnStageChanged: (stage, raw) {},
     );
+    
     _engine.initialize(
       groupIdentifier: "group.f5vpn",
       providerBundleIdentifier: "com.f5vpn.openvpn",
